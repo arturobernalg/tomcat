@@ -246,6 +246,27 @@ public class TestHttp2Section_4_3 extends Http2TestBase {
 
         sendPing();
 
-        handleGoAwayResponse(3, Http2Error.COMPRESSION_ERROR);
+        handleGoAwayResponse(3);
+    }
+
+
+    @Test
+    public void testHeaderContinuationDifferentStream() throws Exception {
+        // HTTP2 upgrade
+        http2Connect();
+
+        // Part 1
+        byte[] frameHeader = new byte[9];
+        ByteBuffer headersPayload = ByteBuffer.allocate(128);
+        buildSimpleGetRequestPart1(frameHeader, headersPayload, 3);
+        writeFrame(frameHeader, headersPayload);
+
+        // A complete request on a different stream while the header block of stream 3 is still open
+        frameHeader = new byte[9];
+        headersPayload = ByteBuffer.allocate(128);
+        buildSimpleGetRequest(frameHeader, headersPayload, null, 5);
+        writeFrame(frameHeader, headersPayload);
+
+        handleGoAwayResponse(3);
     }
 }
