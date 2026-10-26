@@ -17,6 +17,7 @@
 package org.apache.coyote.http2;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.Enumeration;
 
 import javax.management.ObjectName;
@@ -177,11 +178,24 @@ public class Http2Protocol implements UpgradeProtocol {
         // Should only be one HTTP2-Settings header
         Enumeration<String> settings = request.getMimeHeaders().values("HTTP2-Settings");
         int count = 0;
+        String settingsValue = null;
         while (settings.hasMoreElements()) {
             count++;
-            settings.nextElement();
+            settingsValue = settings.nextElement();
         }
         if (count != 1) {
+            return false;
+        }
+
+        // RFC 9113, section 3.2: the server MUST NOT upgrade if the value is not a valid
+        // BASE64URL-encoded HTTP/2 SETTINGS payload. A valid payload decodes without error
+        // and its length is a multiple of 6 octets (each setting is exactly 6 octets).
+        try {
+            byte[] decoded = Base64.getUrlDecoder().decode(settingsValue);
+            if (decoded.length % 6 != 0) {
+                return false;
+            }
+        } catch (IllegalArgumentException e) {
             return false;
         }
 
