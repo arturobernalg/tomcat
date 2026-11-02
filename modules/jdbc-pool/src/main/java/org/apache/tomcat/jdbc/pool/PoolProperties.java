@@ -16,14 +16,17 @@
  */
 package org.apache.tomcat.jdbc.pool;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.Serializable;
+import java.io.StringReader;
 import java.lang.reflect.Method;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 
@@ -31,13 +34,15 @@ import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 
 /**
- * Implementation of {@link PoolConfiguration} that holds the configuration
- * properties for a connection pool.
+ * Implementation of {@link PoolConfiguration} that holds the configuration properties for a connection pool.
  */
 public class PoolProperties implements PoolConfiguration, Cloneable, Serializable {
 
     private static final long serialVersionUID = -8519283440854213745L;
     private static final Log log = LogFactory.getLog(PoolProperties.class);
+
+    /** The mask the {@link #toString()} dump prints in place of a password. */
+    private static final String PASSWORD_MASK = "********";
 
     /**
      * Constructs a PoolProperties with default values.
@@ -70,6 +75,8 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
     private volatile String defaultCatalog = null;
     /** Additional connection properties. */
     private volatile String connectionProperties;
+    /** Keys the last parse of {@link #connectionProperties} contributed to {@link #dbProperties}. */
+    private volatile Set<String> connectionPropertyKeys = Collections.emptySet();
     /** The initial number of connections in the pool. */
     private volatile int initialSize = 10;
     /** The maximum number of active connections. */
@@ -109,7 +116,8 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
     /** Whether to log abandoned connections. */
     private volatile boolean logAbandoned = false;
     /** The pool name. */
-    private volatile String name = "Tomcat Connection Pool["+(poolCounter.addAndGet(1))+"-"+System.identityHashCode(PoolProperties.class)+"]";
+    private volatile String name = "Tomcat Connection Pool[" + (poolCounter.addAndGet(1)) + "-" +
+            System.identityHashCode(PoolProperties.class) + "]";
     /** The database password. */
     private volatile String password;
     /** The database username. */
@@ -121,9 +129,9 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
     /** The SQL to execute on connection creation. */
     private volatile String initSQL;
     /** Whether to validate connections on creation. */
-    private volatile boolean testOnConnect =false;
+    private volatile boolean testOnConnect = false;
     /** The JDBC interceptors configuration. */
-    private volatile String jdbcInterceptors=null;
+    private volatile String jdbcInterceptors = null;
     /** Whether to use a fair queue for connection requests. */
     private volatile boolean fairQueue = true;
     /** Whether to use equals for object comparison. */
@@ -148,7 +156,12 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
     private volatile boolean commitOnReturn = false;
     /** Whether to rollback on connection return. */
     private volatile boolean rollbackOnReturn = false;
-    /** Whether to use a disposable connection facade. */
+    /**
+     * Whether to use a disposable connection facade.
+     *
+     * @deprecated The disposable connection facade is always used, so this property no longer has any effect.
+     */
+    @Deprecated
     private volatile boolean useDisposableConnectionFacade = true;
     /** Whether to log validation errors. */
     private volatile boolean logValidationErrors = false;
@@ -156,14 +169,19 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
     private volatile boolean propagateInterruptState = false;
     /** Whether to ignore exceptions during pre-load. */
     private volatile boolean ignoreExceptionOnPreLoad = false;
-    /** Whether to use a statement facade. */
+    /**
+     * Whether to use a statement facade.
+     *
+     * @deprecated The statement facade is always used, so this property no longer has any effect.
+     */
+    @Deprecated
     private volatile boolean useStatementFacade = true;
 
     @Override
     public void setAbandonWhenPercentageFull(int percentage) {
-        if (percentage<0) {
+        if (percentage < 0) {
             abandonWhenPercentageFull = 0;
-        } else if (percentage>100) {
+        } else if (percentage > 100) {
             abandonWhenPercentageFull = 100;
         } else {
             abandonWhenPercentageFull = percentage;
@@ -377,13 +395,12 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
     @Override
     public void setValidator(Validator validator) {
         this.validator = validator;
-        if (validator!=null) {
+        if (validator != null) {
             this.validatorClassName = validator.getClass().getName();
         } else {
             this.validatorClassName = null;
         }
     }
-
 
 
     @Override
@@ -410,31 +427,62 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
     }
 
 
+    /**
+     * {@inheritDoc}
+     *
+     * <p>The string is parsed on first use and the result cached. The check,
+     * the parse and the publish run inside this one synchronized method, under
+     * the same lock {@link #setJdbcInterceptors(String)} takes to clear the
+     * cache: a parse that read the previous value of the string can therefore
+     * never store its result back after a reconfiguration cleared it, which is
+     * what would leave every later caller on the discarded interceptor chain
+     * for good. The string is read once into a local so the parse works on a
+     * single snapshot. A malformed value throws before the cache is written, so
+     * a later call parses the then-current value again. The lock is never held
+     * over interceptor class loading: an {@link InterceptorDefinition} parsed
+     * from the string only keeps the class name, and those classes are loaded
+     * later by the pool, outside this lock.</p>
+     */
     @Override
-    public InterceptorDefinition[] getJdbcInterceptorsAsArray() {
+    public synchronized InterceptorDefinition[] getJdbcInterceptorsAsArray() {
         if (interceptors == null) {
-            if (jdbcInterceptors==null) {
+            // One read of the reconfigurable string: the parse below must see
+            // a single value, not a fresh read per use.
+            String interceptorList = jdbcInterceptors;
+            if (interceptorList == null) {
                 interceptors = new InterceptorDefinition[0];
             } else {
-                String[] interceptorValues = jdbcInterceptors.split(";");
-                InterceptorDefinition[] definitions = new InterceptorDefinition[interceptorValues.length+1];
-                //always add the trap interceptor to the mix
+                String[] interceptorValues = interceptorList.split(";");
+                InterceptorDefinition[] definitions = new InterceptorDefinition[interceptorValues.length + 1];
+                // Always add the trap interceptor to the mix
                 definitions[0] = new InterceptorDefinition(TrapException.class);
-                for (int i=0; i<interceptorValues.length; i++) {
+                for (int i = 0; i < interceptorValues.length; i++) {
                     int propIndex = interceptorValues[i].indexOf('(');
                     int endIndex = interceptorValues[i].indexOf(')');
-                    if (propIndex<0 || endIndex<0 || endIndex <= propIndex) {
-                        definitions[i+1] = new InterceptorDefinition(interceptorValues[i].trim());
+                    if (propIndex < 0 || endIndex < 0 || endIndex <= propIndex) {
+                        definitions[i + 1] = new InterceptorDefinition(interceptorValues[i].trim());
                     } else {
-                        String name = interceptorValues[i].substring(0,propIndex).trim();
-                        definitions[i+1] = new InterceptorDefinition(name);
-                        String propsAsString = interceptorValues[i].substring(propIndex+1, endIndex);
+                        String name = interceptorValues[i].substring(0, propIndex).trim();
+                        definitions[i + 1] = new InterceptorDefinition(name);
+                        String propsAsString = interceptorValues[i].substring(propIndex + 1, endIndex);
                         String[] props = propsAsString.split(",");
-                        for (int j=0; j<props.length; j++) {
-                            int pidx = props[j].indexOf('=');
-                            String propName = props[j].substring(0,pidx).trim();
-                            String propValue = props[j].substring(pidx+1).trim();
-                            definitions[i+1].addProperty(new InterceptorProperty(propName,propValue));
+                        for (int j = 0; j < props.length; j++) {
+                            String prop = props[j];
+                            if (prop.trim().isEmpty()) {
+                                // An empty segment comes from Name(), Name( )
+                                // or a redundant separator: there is no property
+                                // to add, so tolerate it rather than fail the
+                                // whole pool start on a cosmetic spelling
+                                continue;
+                            }
+                            int pidx = prop.indexOf('=');
+                            if (pidx < 0) {
+                                throw new IllegalArgumentException("Invalid interceptor property '" + prop.trim() +
+                                        "', missing '=', in jdbcInterceptors value [" + interceptorValues[i] + "]");
+                            }
+                            String propName = prop.substring(0, pidx).trim();
+                            String propValue = prop.substring(pidx + 1).trim();
+                            definitions[i + 1].addProperty(new InterceptorProperty(propName, propValue));
                         }
                     }
                 }
@@ -451,16 +499,65 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
     }
 
 
+    /**
+     * Stores the connection properties string and parses the pairs into the
+     * database properties the pool connects with. The pairs contributed by the
+     * previous value of the string are removed first, so reconfiguring a running
+     * pool with a reduced or cleared string really stops sending the dropped
+     * properties to the driver instead of leaving them merged in. Entries the
+     * string never contributed, such as the {@code user} and {@code password}
+     * injected by {@link DataSourceFactory#parsePoolProperties(Properties)} or
+     * mirrored in by {@link DataSourceProxy}, are kept. A configuration whose
+     * database properties are {@code null} only stores the raw string, as there
+     * is no property collection to parse into. The remove and re-add run inside
+     * this one synchronized method; an unsynchronised reader of the database
+     * properties, which {@link #getDbProperties()} has always handed out live,
+     * can therefore observe the contributed keys briefly missing.
+     *
+     * @param connectionProperties the property string with semicolon-separated
+     *                             key=value pairs, or {@code null} to clear it
+     */
     @Override
-    public void setConnectionProperties(String connectionProperties) {
+    public synchronized void setConnectionProperties(String connectionProperties) {
         this.connectionProperties = connectionProperties;
-        getProperties(connectionProperties, getDbProperties());
+        Properties dbProps = getDbProperties();
+        if (dbProps == null) {
+            // The pairs have no collection to land in; nothing was contributed,
+            // so there is nothing to track for a later removal either.
+            connectionPropertyKeys = Collections.emptySet();
+            return;
+        }
+        // A configuration serialized before this field existed deserializes
+        // with it null, as field initializers do not run on deserialization.
+        if (connectionPropertyKeys != null) {
+            for (String key : connectionPropertyKeys) {
+                dbProps.remove(key);
+            }
+        }
+        // Parse into a fresh collection first: that is what tells apart the keys
+        // this string contributes from the ones dbProperties holds from elsewhere.
+        Properties parsed = getProperties(connectionProperties, new Properties());
+        Set<String> keys = new HashSet<>(parsed.size());
+        for (String key : parsed.stringPropertyNames()) {
+            dbProps.setProperty(key, parsed.getProperty(key));
+            keys.add(key);
+        }
+        connectionPropertyKeys = keys;
     }
 
 
+    /**
+     * Replaces the database properties the pool connects with. The keys tracked
+     * from the last connection properties parse contributed to the previous
+     * collection, not to the replacement, so the tracking is reset: the caller
+     * owns whatever the new collection holds.
+     *
+     * @param dbProperties the new database properties, may be {@code null}
+     */
     @Override
-    public void setDbProperties(Properties dbProperties) {
+    public synchronized void setDbProperties(Properties dbProperties) {
         this.dbProperties = dbProperties;
+        connectionPropertyKeys = Collections.emptySet();
     }
 
 
@@ -585,8 +682,7 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
 
 
     @Override
-    public void setTimeBetweenEvictionRunsMillis(int
-                                                 timeBetweenEvictionRunsMillis) {
+    public void setTimeBetweenEvictionRunsMillis(int timeBetweenEvictionRunsMillis) {
         this.timeBetweenEvictionRunsMillis = timeBetweenEvictionRunsMillis;
     }
 
@@ -627,28 +723,25 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
 
         try {
             @SuppressWarnings("unchecked")
-            Class<Validator> validatorClass = (Class<Validator>)ClassLoaderUtil.loadClass(
-                    className,
-                    PoolProperties.class.getClassLoader(),
-                    Thread.currentThread().getContextClassLoader()
-            );
+            Class<Validator> validatorClass = (Class<Validator>) ClassLoaderUtil.loadClass(className,
+                    PoolProperties.class.getClassLoader(), Thread.currentThread().getContextClassLoader());
             validator = validatorClass.getConstructor().newInstance();
         } catch (ClassNotFoundException e) {
-            log.warn("The class "+className+" cannot be found.", e);
+            log.warn("The class " + className + " cannot be found.", e);
         } catch (ClassCastException e) {
-            log.warn("The class "+className+" does not implement the Validator interface.", e);
+            log.warn("The class " + className + " does not implement the Validator interface.", e);
         } catch (IllegalAccessException e) {
-            log.warn("The class "+className+" or its no-arg constructor are inaccessible.", e);
+            log.warn("The class " + className + " or its no-arg constructor are inaccessible.", e);
         } catch (ReflectiveOperationException | IllegalArgumentException | SecurityException e) {
-            log.warn("An object of class "+className+" cannot be instantiated. Make sure that "+
-                     "it includes an implicit or explicit no-arg constructor.", e);
+            log.warn("An object of class " + className + " cannot be instantiated. Make sure that " +
+                    "it includes an implicit or explicit no-arg constructor.", e);
         }
     }
 
 
     @Override
     public void setInitSQL(String initSQL) {
-        this.initSQL = initSQL!=null && initSQL.trim().length()>0 ? initSQL : null;
+        this.initSQL = initSQL != null && initSQL.trim().length() > 0 ? initSQL : null;
     }
 
 
@@ -658,8 +751,18 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
     }
 
 
+    /**
+     * Stores the interceptor configuration string and drops the parsed cache
+     * so the next {@link #getJdbcInterceptorsAsArray()} re-parses the new
+     * value. The clear runs under the same lock the parse publishes under, so
+     * a parse that started from the previous value of the string can never
+     * store its result back after this clear.
+     *
+     * @param jdbcInterceptors the semicolon separated interceptor configuration,
+     *                         may be {@code null} to use none
+     */
     @Override
-    public void setJdbcInterceptors(String jdbcInterceptors) {
+    public synchronized void setJdbcInterceptors(String jdbcInterceptors) {
         this.jdbcInterceptors = jdbcInterceptors;
         this.interceptors = null;
     }
@@ -670,25 +773,30 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
         StringBuilder buf = new StringBuilder("ConnectionPool[");
         try {
             String[] fields = DataSourceFactory.ALL_PROPERTIES;
-            for (String field: fields) {
-                final String[] prefix = new String[] {"get","is"};
-                for (int j=0; j<prefix.length; j++) {
+            for (String field : fields) {
+                final String[] prefix = new String[] { "get", "is" };
+                for (int j = 0; j < prefix.length; j++) {
 
-                    String name = prefix[j]
-                            + field.substring(0, 1).toUpperCase(Locale.ENGLISH)
-                            + field.substring(1);
+                    String name = prefix[j] + field.substring(0, 1).toUpperCase(Locale.ENGLISH) + field.substring(1);
                     Method m = null;
                     try {
                         m = getClass().getMethod(name);
-                    }catch (NoSuchMethodException nm) {
+                    } catch (NoSuchMethodException nm) {
                         continue;
                     }
+                    Object value = m.invoke(this, new Object[0]);
                     buf.append(field);
                     buf.append('=');
                     if (DataSourceFactory.PROP_PASSWORD.equals(field)) {
-                        buf.append("********");
+                        buf.append(PASSWORD_MASK);
+                    } else if (DataSourceFactory.PROP_URL.equals(field)
+                            || DataSourceFactory.PROP_CONNECTIONPROPERTIES.equals(field)) {
+                        // The same dump prints these raw configuration
+                        // strings, so a credential typed into one of them
+                        // has to be masked too, not just the password field.
+                        buf.append(value == null ? "null" : maskCredentials((String) value));
                     } else {
-                        buf.append(m.invoke(this, new Object[0]));
+                        buf.append(value);
                     }
                     buf.append("; ");
                     break;
@@ -696,7 +804,7 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
             }
             buf.append(']');
         } catch (Exception x) {
-            //shouldn't happen
+            // Shouldn't happen
             if (log.isDebugEnabled()) {
                 log.debug("toString() call failed", x);
             }
@@ -704,8 +812,102 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
         return buf.toString();
     }
 
+
+    /**
+     * Masks the value of credential-like {@code key=value} pairs embedded in a
+     * raw configuration string so that a password typed into the JDBC URL query
+     * string or the connection properties is not printed in cleartext the way
+     * the dedicated password field is masked in {@link #toString()}. The keys
+     * recognised, compared ignoring case, are {@code password}, {@code pass}
+     * and {@code pwd}. A key is honoured only at a segment boundary - the start
+     * of the string or one of {@code ;}, {@code &} or {@code ?} - so a key such
+     * as {@code compass} is left alone, and its value runs to the next
+     * {@code ;}, {@code &} or the end of the string.
+     * <p>
+     * Only the {@code key=value} shape is scrubbed. The
+     * {@code user:password@host} userinfo form, the {@code key:value} and
+     * {@code key value} forms that a {@link java.util.Properties} reader
+     * additionally accepts, and driver-specific secrets that use a key other
+     * than the three above are not recognised; recognising them would require
+     * a full parse of each driver's URL dialect.
+     *
+     * @param value the raw configuration string, may be {@code null}
+     *
+     * @return the string with every credential key's value replaced by the mask,
+     *         or the string unchanged when it holds no recognised credential key
+     */
+    private static String maskCredentials(String value) {
+        if (value == null || value.indexOf('=') < 0) {
+            return value;
+        }
+        StringBuilder result = new StringBuilder(value.length());
+        int i = 0;
+        while (i < value.length()) {
+            int equals = value.indexOf('=', i);
+            if (equals < 0) {
+                break;
+            }
+            int keyStart = equals;
+            while (keyStart > 0 && !isCredentialSegmentSeparator(value.charAt(keyStart - 1))) {
+                keyStart--;
+            }
+            String key = value.substring(keyStart, equals).trim();
+            int valueStart = equals + 1;
+            int valueEnd = value.length();
+            for (int k = valueStart; k < value.length(); k++) {
+                char c = value.charAt(k);
+                if (c == ';' || c == '&') {
+                    valueEnd = k;
+                    break;
+                }
+            }
+            result.append(value, i, equals);
+            result.append('=');
+            if (isCredentialKey(key)) {
+                result.append(PASSWORD_MASK);
+            } else {
+                result.append(value, valueStart, valueEnd);
+            }
+            // Resume after the value so a '=' inside a masked value cannot be
+            // mistaken for the start of a new key.
+            i = valueEnd;
+        }
+        result.append(value, i, value.length());
+        return result.toString();
+    }
+
+
+    /**
+     * Whether {@code c} ends one configuration segment and starts the next,
+     * covering the URL query separators and the semicolon used by the
+     * connection properties string.
+     *
+     * @param c the character to test
+     *
+     * @return {@code true} when the character is a segment boundary
+     */
+    private static boolean isCredentialSegmentSeparator(char c) {
+        return c == ';' || c == '&' || c == '?';
+    }
+
+
+    /**
+     * Whether {@code key} names a credential, ignoring case and surrounding
+     * whitespace.
+     *
+     * @param key the extracted key
+     *
+     * @return {@code true} when the key is one of the recognised credential keys
+     */
+    private static boolean isCredentialKey(String key) {
+        return DataSourceFactory.PROP_PASSWORD.equalsIgnoreCase(key)
+                || "pass".equalsIgnoreCase(key)
+                || "pwd".equalsIgnoreCase(key);
+    }
+
     /**
      * Returns the current pool counter value.
+     *
      * @return the pool counter value
      */
     public static int getPoolCounter() {
@@ -737,7 +939,6 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
     }
 
 
-
     @Override
     public int getSuspectTimeout() {
         return this.suspectTimeout;
@@ -752,12 +953,12 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
 
     @Override
     public boolean isPoolSweeperEnabled() {
-        boolean timer = getTimeBetweenEvictionRunsMillis()>0;
-        boolean result = timer && (isRemoveAbandoned() && getRemoveAbandonedTimeout()>0);
-        result = result || (timer && getSuspectTimeout()>0);
+        boolean timer = getTimeBetweenEvictionRunsMillis() > 0;
+        boolean result = timer && (isRemoveAbandoned() && getRemoveAbandonedTimeout() > 0);
+        result = result || (timer && getSuspectTimeout() > 0);
         result = result || (timer && isTestWhileIdle());
-        result = result || (timer && getMinEvictableIdleTimeMillis()>0);
-        result = result || (timer && getMaxAge()>0);
+        result = result || (timer && getMinEvictableIdleTimeMillis() > 0);
+        result = result || (timer && getMaxAge() > 0);
         return result;
     }
 
@@ -774,13 +975,15 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
         /**
          * Map of interceptor properties.
          */
-        protected Map<String,InterceptorProperty> properties = new HashMap<>();
+        protected Map<String, InterceptorProperty> properties = new HashMap<>();
         /**
          * Cached interceptor class.
          */
         protected volatile Class<?> clazz = null;
+
         /**
          * Constructs an InterceptorDefinition with the given class name.
+         *
          * @param className the interceptor class name
          */
         public InterceptorDefinition(String className) {
@@ -789,6 +992,7 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
 
         /**
          * Constructs an InterceptorDefinition with the given class.
+         *
          * @param cl the interceptor class
          */
         public InterceptorDefinition(Class<?> cl) {
@@ -798,23 +1002,27 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
 
         /**
          * Returns the interceptor class name.
+         *
          * @return the class name
          */
         public String getClassName() {
             return className;
         }
+
         /**
          * Adds a property with the given name and value.
-         * @param name the property name
+         *
+         * @param name  the property name
          * @param value the property value
          */
         public void addProperty(String name, String value) {
-            InterceptorProperty p = new InterceptorProperty(name,value);
+            InterceptorProperty p = new InterceptorProperty(name, value);
             addProperty(p);
         }
 
         /**
          * Adds the given interceptor property.
+         *
          * @param p the property to add
          */
         public void addProperty(InterceptorProperty p) {
@@ -823,41 +1031,38 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
 
         /**
          * Returns the map of interceptor properties.
+         *
          * @return the properties map
          */
-        public Map<String,InterceptorProperty> getProperties() {
+        public Map<String, InterceptorProperty> getProperties() {
             return properties;
         }
 
         /**
          * Returns the interceptor class, loading it if necessary.
+         *
          * @return the interceptor class
+         *
          * @throws ClassNotFoundException if the class cannot be found
          */
         @SuppressWarnings("unchecked")
         public Class<? extends JdbcInterceptor> getInterceptorClass() throws ClassNotFoundException {
-            if (clazz==null) {
-                if (getClassName().indexOf('.')<0) {
+            if (clazz == null) {
+                if (getClassName().indexOf('.') < 0) {
                     if (log.isDebugEnabled()) {
-                        log.debug("Loading interceptor class:" +  PKG_PREFIX + getClassName());
+                        log.debug("Loading interceptor class:" + PKG_PREFIX + getClassName());
                     }
-                    clazz = ClassLoaderUtil.loadClass(
-                        PKG_PREFIX + getClassName(),
-                        PoolProperties.class.getClassLoader(),
-                        Thread.currentThread().getContextClassLoader()
-                    );
+                    clazz = ClassLoaderUtil.loadClass(PKG_PREFIX + getClassName(),
+                            PoolProperties.class.getClassLoader(), Thread.currentThread().getContextClassLoader());
                 } else {
                     if (log.isDebugEnabled()) {
-                        log.debug("Loading interceptor class:"+getClassName());
+                        log.debug("Loading interceptor class:" + getClassName());
                     }
-                    clazz = ClassLoaderUtil.loadClass(
-                        getClassName(),
-                        PoolProperties.class.getClassLoader(),
-                        Thread.currentThread().getContextClassLoader()
-                    );
+                    clazz = ClassLoaderUtil.loadClass(getClassName(), PoolProperties.class.getClassLoader(),
+                            Thread.currentThread().getContextClassLoader());
                 }
             }
-            return (Class<? extends JdbcInterceptor>)clazz;
+            return (Class<? extends JdbcInterceptor>) clazz;
         }
     }
 
@@ -874,25 +1079,31 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
          * Property value.
          */
         String value;
+
         /**
          * Constructs an InterceptorProperty with the given name and value.
-         * @param name the property name
+         *
+         * @param name  the property name
          * @param value the property value
          */
         public InterceptorProperty(String name, String value) {
-            assert(name!=null);
+            assert (name != null);
             this.name = name;
             this.value = value;
         }
+
         /**
          * Returns the property name.
+         *
          * @return the property name
          */
         public String getName() {
             return name;
         }
+
         /**
          * Returns the property value.
+         *
          * @return the property value
          */
         public String getValue() {
@@ -901,11 +1112,13 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
 
         /**
          * Returns the property value as a boolean.
+         *
          * @param def the default value if the property is null or invalid
+         *
          * @return the boolean value
          */
         public boolean getValueAsBoolean(boolean def) {
-            if (value==null) {
+            if (value == null) {
                 return def;
             }
             if ("true".equals(value)) {
@@ -919,113 +1132,127 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
 
         /**
          * Returns the property value as an int.
+         *
          * @param def the default value if the property is null or invalid
+         *
          * @return the int value
          */
         public int getValueAsInt(int def) {
-            if (value==null) {
+            if (value == null) {
                 return def;
             }
             try {
                 int v = Integer.parseInt(value);
                 return v;
-            }catch (NumberFormatException nfe) {
+            } catch (NumberFormatException nfe) {
                 return def;
             }
         }
 
         /**
          * Returns the property value as a long.
+         *
          * @param def the default value if the property is null or invalid
+         *
          * @return the long value
          */
         public long getValueAsLong(long def) {
-            if (value==null) {
+            if (value == null) {
                 return def;
             }
             try {
                 return Long.parseLong(value);
-            }catch (NumberFormatException nfe) {
+            } catch (NumberFormatException nfe) {
                 return def;
             }
         }
 
         /**
          * Returns the property value as a byte.
+         *
          * @param def the default value if the property is null or invalid
+         *
          * @return the byte value
          */
         public byte getValueAsByte(byte def) {
-            if (value==null) {
+            if (value == null) {
                 return def;
             }
             try {
                 return Byte.parseByte(value);
-            }catch (NumberFormatException nfe) {
+            } catch (NumberFormatException nfe) {
                 return def;
             }
         }
 
         /**
          * Returns the property value as a short.
+         *
          * @param def the default value if the property is null or invalid
+         *
          * @return the short value
          */
         public short getValueAsShort(short def) {
-            if (value==null) {
+            if (value == null) {
                 return def;
             }
             try {
                 return Short.parseShort(value);
-            }catch (NumberFormatException nfe) {
+            } catch (NumberFormatException nfe) {
                 return def;
             }
         }
 
         /**
          * Returns the property value as a float.
+         *
          * @param def the default value if the property is null or invalid
+         *
          * @return the float value
          */
         public float getValueAsFloat(float def) {
-            if (value==null) {
+            if (value == null) {
                 return def;
             }
             try {
                 return Float.parseFloat(value);
-            }catch (NumberFormatException nfe) {
+            } catch (NumberFormatException nfe) {
                 return def;
             }
         }
 
         /**
          * Returns the property value as a double.
+         *
          * @param def the default value if the property is null or invalid
+         *
          * @return the double value
          */
         public double getValueAsDouble(double def) {
-            if (value==null) {
+            if (value == null) {
                 return def;
             }
             try {
                 return Double.parseDouble(value);
-            }catch (NumberFormatException nfe) {
+            } catch (NumberFormatException nfe) {
                 return def;
             }
         }
 
         /**
          * Returns the property value as a char.
+         *
          * @param def the default value if the property is null or invalid
+         *
          * @return the char value
          */
         public char getValueAschar(char def) {
-            if (value==null) {
+            if (value == null) {
                 return def;
             }
             try {
                 return value.charAt(0);
-            }catch (StringIndexOutOfBoundsException nfe) {
+            } catch (StringIndexOutOfBoundsException nfe) {
                 return def;
             }
         }
@@ -1037,11 +1264,11 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
 
         @Override
         public boolean equals(Object o) {
-            if (o==this) {
+            if (o == this) {
                 return true;
             }
             if (o instanceof InterceptorProperty) {
-                InterceptorProperty other = (InterceptorProperty)o;
+                InterceptorProperty other = (InterceptorProperty) o;
                 return other.name.equals(this.name);
             }
             return false;
@@ -1112,18 +1339,25 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
 
     /**
      * Parses a property string into a Properties object.
+     *
      * @param propText the property string with semicolon-separated key=value pairs
-     * @param props the Properties object to populate, or null to create a new one
+     * @param props    the Properties object to populate, or null to create a new one
+     *
      * @return the populated Properties object
      */
     public static Properties getProperties(String propText, Properties props) {
-        if (props==null) {
+        if (props == null) {
             props = new Properties();
         }
         if (propText != null) {
             try {
-                props.load(new ByteArrayInputStream(propText.replace(';', '\n').getBytes()));
-            }catch (IOException ioe) {
+                // Load through a Reader: Properties.load(InputStream) decodes as
+                // ISO-8859-1 while encoding the string to bytes uses the platform
+                // charset, silently corrupting any non-ASCII value on a
+                // UTF-8-default JVM. A Reader carries the exact characters, so no
+                // charset conversion takes place at all.
+                props.load(new StringReader(propText.replace(';', '\n')));
+            } catch (IOException ioe) {
                 throw new RuntimeException(ioe);
             }
         }
@@ -1161,12 +1395,24 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
         return this.rollbackOnReturn;
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * @deprecated The disposable connection facade is always used, so this property no longer has any effect.
+     */
     @Override
+    @Deprecated
     public void setUseDisposableConnectionFacade(boolean useDisposableConnectionFacade) {
         this.useDisposableConnectionFacade = useDisposableConnectionFacade;
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * @deprecated The disposable connection facade is always used, so this property no longer has any effect.
+     */
     @Override
+    @Deprecated
     public boolean getUseDisposableConnectionFacade() {
         return useDisposableConnectionFacade;
     }
@@ -1201,22 +1447,32 @@ public class PoolProperties implements PoolConfiguration, Cloneable, Serializabl
         this.ignoreExceptionOnPreLoad = ignoreExceptionOnPreLoad;
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * @deprecated The statement facade is always used, so this property no longer has any effect.
+     */
     @Override
+    @Deprecated
     public boolean getUseStatementFacade() {
         return useStatementFacade;
     }
 
+    /**
+     * {@inheritDoc}
+     *
+     * @deprecated The statement facade is always used, so this property no longer has any effect.
+     */
     @Override
+    @Deprecated
     public void setUseStatementFacade(boolean useStatementFacade) {
         this.useStatementFacade = useStatementFacade;
     }
 
     @Override
     protected Object clone() throws CloneNotSupportedException {
-        // TODO Auto-generated method stub
         return super.clone();
     }
-
 
 
 }

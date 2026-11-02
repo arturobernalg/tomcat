@@ -105,7 +105,9 @@
           This is achieved using the <code>suspectTimeout</code> attribute.</li>
       <li>Connections can be retrieved from a <code>java.sql.Driver</code>, <code>javax.sql.DataSource</code> or <code>javax.sql.XADataSource</code>
           This is achieved using the <code>dataSource</code> and <code>dataSourceJNDI</code> attributes.</li>
-      <li>XA connection support</li>
+      <li>XA connection support. XA connections are provided by the data source named by the
+          <code>dataSource</code> or <code>dataSourceJNDI</code> attribute, which must implement
+          <code>javax.sql.XADataSource</code>.</li>
     </ol>
 
 
@@ -166,6 +168,11 @@
       <attribute name="type" required="true">
         <p>Type should always be <code>javax.sql.DataSource</code> or <code>javax.sql.XADataSource</code></p>
         <p>Depending on the type a <code>org.apache.tomcat.jdbc.pool.DataSource</code> or a <code>org.apache.tomcat.jdbc.pool.XADataSource</code> will be created.</p>
+        <p>Note that the <code>javax.sql.XADataSource</code> type only provides XA connections if the pool is backed
+        by an XA data source: the <code>dataSource</code> or <code>dataSourceJNDI</code> attribute must name a
+        <code>javax.sql.XADataSource</code> provided by the JDBC driver. A pool configured with
+        <code>driverClassName</code> and <code>url</code> pools plain JDBC connections, and a request for an XA
+        connection from such a pool fails with an explicit error.</p>
       </attribute>
     </attributes>
   </subsection>
@@ -533,12 +540,20 @@
       </p>
     </attribute>
     <attribute name="dataSourceJNDI" required="false">
-      <p>(String) The JNDI name for a data source to be looked up in JNDI and then used to establish connections to the database. See the <code>dataSource</code> attribute. Default value is <code>null</code>
+      <p>(String) The JNDI name for a data source to be looked up in JNDI and then used to establish connections to the database. See the <code>dataSource</code> attribute. Default value is <code>null</code>. If the name cannot be resolved when the pool is created, the creation fails with an error naming the unresolved name rather than producing a pool that cannot provide connections.
       </p>
     </attribute>
     <attribute name="useDisposableConnectionFacade" required="false">
-      <p>(boolean) Set this to true if you wish to put a facade on your connection so that it cannot be reused after it has been closed. This prevents a thread holding on to a
-                   reference of a connection it has already called closed on, to execute queries on it. Default value is <code>true</code>.
+      <p>(boolean) Deprecated. This property no longer has any effect. The pool
+                   always puts a facade on the connections it hands out, so that a
+                   connection cannot be reused after it has been closed: after
+                   <code>close()</code> has been called, all calls on the handle
+                   except <code>close()</code> and <code>isClosed()</code> throw an
+                   exception. Switching the facade off used to leave a handle usable
+                   after close, which allowed it to return or drive the connection of
+                   a later borrower; setting this property to
+                   <code>false</code> is therefore not supported. The property is
+                   still accepted so that existing configurations keep loading.
       </p>
     </attribute>
     <attribute name="logValidationErrors" required="false">
@@ -557,10 +572,26 @@
       </p>
     </attribute>
     <attribute name="useStatementFacade" required="false">
-      <p>(boolean) Set this to true if you wish to wrap statements in order to
-         enable <code>equals()</code> and <code>hashCode()</code> methods to be
-         called on the closed statements if any statement proxy is set.
-         Default value is <code>true</code>.
+      <p>(boolean) Deprecated. This property no longer has any effect. The pool
+                   always puts a facade on the statements it hands out, so that
+                   <code>equals()</code>, <code>hashCode()</code> and
+                   <code>toString()</code> can be called on closed statements,
+                   <code>Statement.getConnection()</code> reports the pooled
+                   connection the statement was created from rather than the
+                   driver's own connection, and a statement stops working,
+                   along with the result sets read from it, once that connection
+                   has been returned to the pool. The handles of that facade,
+                   and those of the interceptors that wrap statements beneath
+                   it, implement only the standard <code>java.sql</code>
+                   interfaces, so the driver's own classes are reached with
+                   <code>isWrapperFor()</code> and <code>unwrap()</code>.
+                   Switching the facade off used to leave statement and result
+                   set handles usable after the borrow they came from had
+                   ended, which allowed a kept handle
+                   to execute on the session the next borrower held; setting
+                   this property to <code>false</code> is therefore not
+                   supported. The property is still accepted so that existing
+                   configurations keep loading.
       </p>
     </attribute>
 
@@ -633,6 +664,19 @@
     <p>Keeps track of all statements created using <code>createStatement</code>, <code>prepareStatement</code> or <code>prepareCall</code>
        and closes these statements when the connection is returned to the pool.
     </p>
+    <p>The tracked statements are handed to the application as proxies
+       implementing the standard <code>java.sql</code> statement interfaces, as
+       is the statement facade the pool always installs in front of this
+       interceptor; the driver's own statement class is therefore not
+       reachable by casting. <code>isWrapperFor</code> and <code>unwrap</code>
+       answer through every layer, and <code>unwrap</code> is the supported way
+       to reach driver-specific statement methods. A statement the application
+       unwraps during a borrow is still tracked by this interceptor and is
+       closed, like the others, when the connection is returned to the pool -
+       unless an interceptor listed after this one recycles the statement
+       instead of closing it, as a <code>StatementCache</code> beneath this
+       interceptor does.
+    </p>
     <attributes>
       <attribute name="trace" required="false">
         <p>(boolean as String) Enable tracing of unclosed statements.
@@ -651,6 +695,13 @@
        The count limit is counted globally for all connections that belong to
        the same pool. Once the count reaches <code>max</code>, subsequent
        statements are not returned to the cache and are closed immediately.
+    </p>
+    <p><strong>Note:</strong> a cache hit is answered by this interceptor without
+       invoking the rest of the interceptor chain, and recycled statements are reset to
+       driver defaults. Interceptors listed <em>after</em> the cache in
+       <code>jdbcInterceptors</code> do not see reused statements &#8211; for example,
+       <code>QueryTimeoutInterceptor</code> must be listed <em>before</em> the cache to keep
+       its timeout on cached statements.
     </p>
     <attributes>
       <attribute name="prepared" required="false">
@@ -683,6 +734,13 @@
   <subsection name="org.apache.tomcat.jdbc.pool.interceptor.QueryTimeoutInterceptor">
     <p>Automatically calls <code>java.sql.Statement.setQueryTimeout(seconds)</code> when a new statement is created.
        The pool itself doesn't timeout the query, it is still up to the JDBC driver to enforce query timeouts.
+    </p>
+    <p><strong>Note:</strong> when combined with
+       <code>org.apache.tomcat.jdbc.pool.interceptor.StatementCache</code>, this interceptor must be listed
+       <em>before</em> the statement cache in the <code>jdbcInterceptors</code> attribute. The cache serves a hit
+       without invoking the rest of the interceptor chain and recycles statements with their query timeout reset
+       to zero, so an interceptor listed after the cache does not see cached statements on reuse and those
+       statements execute with no timeout.
     </p>
     <attributes>
       <attribute name="queryTimeout" required="true">

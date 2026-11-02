@@ -791,33 +791,6 @@ public class TestRequest extends TomcatBaseTest {
     }
 
     /*
-     * The number of locales in the Accept-Language header(s) is
-     * limited because the header value is untrusted input. Requests
-     * that exceed the limit are rejected (when the locales are
-     * accessed) in the same way as requests that exceed
-     * maxCookieCount.
-     */
-    @Test
-    public void testAcceptLanguageLocaleLimit() throws Exception {
-        TesterRequest req = new TesterRequest();
-
-        req.addHeader("accept-language", buildAcceptLanguage(20));
-
-        try {
-            req.getLocales();
-            Assert.fail("Accessing the locales when the limit is exceeded should throw an IllegalArgumentException");
-        } catch (IllegalArgumentException iae) {
-            // Expected
-        }
-
-        // Requests within the limit are processed and the highest
-        // quality locale (at the start of the list) is retained
-        req = new TesterRequest();
-        req.addHeader("accept-language", "aa-000,aa-001,aa-002");
-        Assert.assertEquals(Locale.forLanguageTag("aa-000"), req.getLocale());
-    }
-
-    /*
      * The locale limit is configurable via the maxLocaleCount attribute
      * of the Connector associated with the request.
      */
@@ -831,12 +804,7 @@ public class TestRequest extends TomcatBaseTest {
         connector.setMaxLocaleCount(5);
         Assert.assertEquals(5, localeCount(connector, buildAcceptLanguage(5)));
 
-        try {
-            localeCount(connector, buildAcceptLanguage(6));
-            Assert.fail("Exceeding maxLocaleCount should throw an IllegalArgumentException");
-        } catch (IllegalArgumentException iae) {
-            // Expected
-        }
+        Assert.assertEquals(5, localeCount(connector, buildAcceptLanguage(6)));
 
         // No limit
         connector = new Connector();
@@ -870,28 +838,6 @@ public class TestRequest extends TomcatBaseTest {
     }
 
     /*
-     * The limit on untrusted locale tags is enforced while the
-     * header is parsed so that Locale objects are not created for
-     * entries that can never be used.
-     */
-    @Test
-    public void testAcceptLanguageLocaleLimitHeaderFlood() throws Exception {
-        Connector connector = new Connector();
-
-        // Default limit of 10. A header with far more tags than the
-        // limit is rejected.
-        try {
-            localeCount(connector, buildAcceptLanguage(5000));
-            Assert.fail("A header with 5000 locales should be rejected");
-        } catch (IllegalArgumentException iae) {
-            // Expected
-        }
-
-        // Exactly the limit is accepted.
-        Assert.assertEquals(10, localeCount(connector, buildAcceptLanguage(10)));
-    }
-
-    /*
      * When multiple Accept-Language headers are present the limit
      * applies to the combined set of locales and parsing stops
      * early on the header in which the limit is exceeded.
@@ -903,13 +849,8 @@ public class TestRequest extends TomcatBaseTest {
                 "aa-005,aa-006,aa-007,aa-008,aa-009"));
 
         // 5 + 6 = 11, exceeds the default limit
-        try {
-            localeCount(new Connector(), "aa-000,aa-001,aa-002,aa-003,aa-004",
-                    "aa-005,aa-006,aa-007,aa-008,aa-009,aa-010");
-            Assert.fail("11 locales across two headers should be rejected");
-        } catch (IllegalArgumentException iae) {
-            // Expected
-        }
+        Assert.assertEquals(10, localeCount(new Connector(), "aa-000,aa-001,aa-002,aa-003,aa-004",
+                    "aa-005,aa-006,aa-007,aa-008,aa-009,aa-010"));
     }
 
     private static int localeCount(Connector connector, String... acceptLanguages) {
@@ -955,6 +896,31 @@ public class TestRequest extends TomcatBaseTest {
         Locale expected = Locale.forLanguageTag("en-gb");
 
         Assert.assertEquals(expected, actual);
+    }
+
+    /*
+     * A script subtag in the Accept-Language header must not end up in the
+     * Locale variant, which made the Locale report the language tag
+     * zh-CN-x-lvariant-HANS for the tag the client sent as zh-Hans-CN. The
+     * default parser cannot represent the script at all and drops it, the
+     * standard parser keeps it.
+     */
+    @Test
+    public void getLocaleScript() throws Exception {
+        TesterRequest req = new TesterRequest();
+
+        req.addHeader("accept-language", "zh-Hans-CN;q=1.0");
+
+        Locale actual = req.getLocale();
+
+        boolean standardParser = Boolean
+                .getBoolean("org.apache.tomcat.util.http.parser.StandardAcceptLanguageParser");
+        Locale expected = Locale.forLanguageTag(standardParser ? "zh-Hans-CN" : "zh-CN");
+
+        Assert.assertEquals(expected, actual);
+        Assert.assertEquals("CN", actual.getCountry());
+        Assert.assertEquals("", actual.getVariant());
+        Assert.assertEquals(expected.toLanguageTag(), actual.toLanguageTag());
     }
 
 

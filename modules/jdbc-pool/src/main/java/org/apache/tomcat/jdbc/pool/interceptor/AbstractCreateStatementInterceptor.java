@@ -103,11 +103,21 @@ public abstract class AbstractCreateStatementInterceptor extends JdbcInterceptor
      * {@link java.sql.Statement#executeBatch()}
      */
     protected static final String EXECUTE_BATCH = "executeBatch";
+    /**
+     * {@link java.sql.Statement#executeLargeUpdate} and its overloads, and
+     * {@link java.sql.PreparedStatement#executeLargeUpdate()}
+     */
+    protected static final String EXECUTE_LARGE_UPDATE = "executeLargeUpdate";
+    /**
+     * {@link java.sql.Statement#executeLargeBatch()}
+     */
+    protected static final String EXECUTE_LARGE_BATCH = "executeLargeBatch";
 
     /**
      * Array of execute type method names
      */
-    protected static final String[] EXECUTE_TYPES = { EXECUTE, EXECUTE_QUERY, EXECUTE_UPDATE, EXECUTE_BATCH };
+    protected static final String[] EXECUTE_TYPES = { EXECUTE, EXECUTE_QUERY, EXECUTE_UPDATE, EXECUTE_BATCH,
+            EXECUTE_LARGE_UPDATE, EXECUTE_LARGE_BATCH };
 
     /**
      * the constructors that are used to create statement proxies
@@ -213,10 +223,8 @@ public abstract class AbstractCreateStatementInterceptor extends JdbcInterceptor
     /**
      * Returns true if the method that is being invoked matches one of the method names passed in
      *
-     * @param names list of method names that we want to intercept
-     *
-     * @param method the method being invoked on the proxy
-     *
+     * @param names   list of method names that we want to intercept
+     * @param method  the method being invoked on the proxy
      * @param process boolean result used for recursion
      *
      * @return returns true if the method name matched

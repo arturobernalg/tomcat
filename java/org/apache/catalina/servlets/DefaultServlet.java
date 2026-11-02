@@ -571,8 +571,25 @@ public class DefaultServlet extends HttpServlet {
      */
     @Override
     protected void doOptions(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
-
         resp.setHeader("Allow", determineMethodsAllowed(req));
+    }
+
+
+    @Override
+    protected void doPatch(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        // Overridden so the correct Allow header can be returned
+        resp.setHeader("Allow", determineMethodsAllowed(req));
+        // Picks up HttpServlet's HTTP/1.0 handling
+        super.doPatch(req, resp);
+    }
+
+
+    @Override
+    protected void doQuery(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        // Overridden so the correct Allow header can be returned
+        resp.setHeader("Allow", determineMethodsAllowed(req));
+        // Picks up HttpServlet's HTTP/1.0 handling
+        super.doQuery(req, resp);
     }
 
 
@@ -2993,7 +3010,7 @@ public class DefaultServlet extends HttpServlet {
          * @return An Order specifying the column and ascending/descending to be applied to resources.
          */
         public Order getOrder(String order) {
-            if (null == order || order.trim().isEmpty()) {
+            if (null == order || order.strip().isEmpty()) {
                 return Order.DEFAULT;
             }
 
@@ -3007,7 +3024,7 @@ public class DefaultServlet extends HttpServlet {
             boolean ascending = false;
 
             for (String option : options) {
-                option = option.trim();
+                option = option.strip();
 
                 if (2 < option.length()) {
                     char opt = option.charAt(0);
