@@ -1,0 +1,9 @@
+Benchmark                                                             Mode  Cnt     Score    Error   Units
+ElMethodInvocationBenchmark.listSizeComparison                        avgt   16   188.669 ±  2.894   ns/op
+ElMethodInvocationBenchmark.listSizeComparison:gc.alloc.rate.norm     avgt   16   264.002 ±  0.001    B/op
+ElMethodInvocationBenchmark.methodWithArgument                        avgt   16   626.579 ±  9.636   ns/op
+ElMethodInvocationBenchmark.methodWithArgument:gc.alloc.rate.norm     avgt   16   360.005 ±  0.001    B/op
+ElMethodInvocationBenchmark.methodWithoutArgument                     avgt   16   442.606 ± 17.824   ns/op
+ElMethodInvocationBenchmark.methodWithoutArgument:gc.alloc.rate.norm  avgt   16   264.004 ±  0.001    B/op
+ElMethodInvocationBenchmark.overloadedMethod                          avgt   16   633.863 ±  8.567   ns/op
+ElMethodInvocationBenchmark.overloadedMethod:gc.alloc.rate.norm       avgt   16   392.005 ±  0.001    B/op
