@@ -1,0 +1,258 @@
+# JMH version: 1.37
+# VM version: JDK 21.0.12.1, OpenJDK 64-Bit Server VM, 21.0.12.1+1
+# VM invoker: /usr/lib/jvm/java-21-openjdk/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: bench.MessageBytesToBytesBenchmark.asciiChars
+# Parameters: (charsetName = UTF-8)
+
+# Run progress: 0.00% complete, ETA 00:00:24
+# Fork: 1 of 1
+# Warmup Iteration   1: 114.725 ns/op
+# Warmup Iteration   2: 111.504 ns/op
+# Warmup Iteration   3: 111.507 ns/op
+Iteration   1: 112.428 ns/op
+                 gc.alloc.rate:      2374.433 MB/sec
+                 gc.alloc.rate.norm: 280.001 B/op
+                 gc.count:           6.000 counts
+                 gc.time:            5.000 ms
+
+Iteration   2: 115.563 ns/op
+                 gc.alloc.rate:      2310.254 MB/sec
+                 gc.alloc.rate.norm: 280.001 B/op
+                 gc.count:           5.000 counts
+                 gc.time:            4.000 ms
+
+Iteration   3: 109.818 ns/op
+                 gc.alloc.rate:      2430.885 MB/sec
+                 gc.alloc.rate.norm: 280.001 B/op
+                 gc.count:           6.000 counts
+                 gc.time:            4.000 ms
+
+Iteration   4: 110.198 ns/op
+                 gc.alloc.rate:      2422.677 MB/sec
+                 gc.alloc.rate.norm: 280.001 B/op
+                 gc.count:           6.000 counts
+                 gc.time:            5.000 ms
+
+Iteration   5: 109.639 ns/op
+                 gc.alloc.rate:      2435.027 MB/sec
+                 gc.alloc.rate.norm: 280.001 B/op
+                 gc.count:           6.000 counts
+                 gc.time:            4.000 ms
+
+
+
+Result "bench.MessageBytesToBytesBenchmark.asciiChars":
+  111.529 ±(99.9%) 9.694 ns/op [Average]
+  (min, avg, max) = (109.639, 111.529, 115.563), stdev = 2.518
+  CI (99.9%): [101.835, 121.223] (assumes normal distribution)
+
+Secondary result "bench.MessageBytesToBytesBenchmark.asciiChars:gc.alloc.rate":
+  2394.655 ±(99.9%) 204.304 MB/sec [Average]
+  (min, avg, max) = (2310.254, 2394.655, 2435.027), stdev = 53.057
+  CI (99.9%): [2190.351, 2598.959] (assumes normal distribution)
+
+Secondary result "bench.MessageBytesToBytesBenchmark.asciiChars:gc.alloc.rate.norm":
+  280.001 ±(99.9%) 0.001 B/op [Average]
+  (min, avg, max) = (280.001, 280.001, 280.001), stdev = 0.001
+  CI (99.9%): [280.001, 280.001] (assumes normal distribution)
+
+Secondary result "bench.MessageBytesToBytesBenchmark.asciiChars:gc.count":
+  29.000 ±(99.9%) 0.001 counts [Sum]
+  (min, avg, max) = (5.000, 5.800, 6.000), stdev = 0.447
+  CI (99.9%): [29.000, 29.000] (assumes normal distribution)
+
+Secondary result "bench.MessageBytesToBytesBenchmark.asciiChars:gc.time":
+  22.000 ±(99.9%) 0.001 ms [Sum]
+  (min, avg, max) = (4.000, 4.400, 5.000), stdev = 0.548
+  CI (99.9%): [22.000, 22.000] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12.1, OpenJDK 64-Bit Server VM, 21.0.12.1+1
+# VM invoker: /usr/lib/jvm/java-21-openjdk/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: bench.MessageBytesToBytesBenchmark.asciiString
+# Parameters: (charsetName = UTF-8)
+
+# Run progress: 33.33% complete, ETA 00:00:16
+# Fork: 1 of 1
+# Warmup Iteration   1: 108.083 ns/op
+# Warmup Iteration   2: 104.800 ns/op
+# Warmup Iteration   3: 104.805 ns/op
+Iteration   1: 103.461 ns/op
+                 gc.alloc.rate:      2580.156 MB/sec
+                 gc.alloc.rate.norm: 280.001 B/op
+                 gc.count:           8.000 counts
+                 gc.time:            6.000 ms
+
+Iteration   2: 106.184 ns/op
+                 gc.alloc.rate:      2514.242 MB/sec
+                 gc.alloc.rate.norm: 280.001 B/op
+                 gc.count:           7.000 counts
+                 gc.time:            4.000 ms
+
+Iteration   3: 107.786 ns/op
+                 gc.alloc.rate:      2476.915 MB/sec
+                 gc.alloc.rate.norm: 280.001 B/op
+                 gc.count:           7.000 counts
+                 gc.time:            5.000 ms
+
+Iteration   4: 104.532 ns/op
+                 gc.alloc.rate:      2553.962 MB/sec
+                 gc.alloc.rate.norm: 280.001 B/op
+                 gc.count:           7.000 counts
+                 gc.time:            5.000 ms
+
+Iteration   5: 103.976 ns/op
+                 gc.alloc.rate:      2567.530 MB/sec
+                 gc.alloc.rate.norm: 280.001 B/op
+                 gc.count:           7.000 counts
+                 gc.time:            5.000 ms
+
+
+
+Result "bench.MessageBytesToBytesBenchmark.asciiString":
+  105.188 ±(99.9%) 6.840 ns/op [Average]
+  (min, avg, max) = (103.461, 105.188, 107.786), stdev = 1.776
+  CI (99.9%): [98.348, 112.028] (assumes normal distribution)
+
+Secondary result "bench.MessageBytesToBytesBenchmark.asciiString:gc.alloc.rate":
+  2538.561 ±(99.9%) 163.348 MB/sec [Average]
+  (min, avg, max) = (2476.915, 2538.561, 2580.156), stdev = 42.421
+  CI (99.9%): [2375.212, 2701.909] (assumes normal distribution)
+
+Secondary result "bench.MessageBytesToBytesBenchmark.asciiString:gc.alloc.rate.norm":
+  280.001 ±(99.9%) 0.001 B/op [Average]
+  (min, avg, max) = (280.001, 280.001, 280.001), stdev = 0.001
+  CI (99.9%): [280.001, 280.001] (assumes normal distribution)
+
+Secondary result "bench.MessageBytesToBytesBenchmark.asciiString:gc.count":
+  36.000 ±(99.9%) 0.001 counts [Sum]
+  (min, avg, max) = (7.000, 7.200, 8.000), stdev = 0.447
+  CI (99.9%): [36.000, 36.000] (assumes normal distribution)
+
+Secondary result "bench.MessageBytesToBytesBenchmark.asciiString:gc.time":
+  25.000 ±(99.9%) 0.001 ms [Sum]
+  (min, avg, max) = (4.000, 5.000, 6.000), stdev = 0.707
+  CI (99.9%): [25.000, 25.000] (assumes normal distribution)
+
+
+# JMH version: 1.37
+# VM version: JDK 21.0.12.1, OpenJDK 64-Bit Server VM, 21.0.12.1+1
+# VM invoker: /usr/lib/jvm/java-21-openjdk/bin/java
+# VM options: <none>
+# Blackhole mode: compiler (auto-detected, use -Djmh.blackhole.autoDetect=false to disable)
+# Warmup: 3 iterations, 1 s each
+# Measurement: 5 iterations, 1 s each
+# Timeout: 10 min per iteration
+# Threads: 1 thread, will synchronize iterations
+# Benchmark mode: Average time, time/op
+# Benchmark: bench.MessageBytesToBytesBenchmark.nonAsciiString
+# Parameters: (charsetName = UTF-8)
+
+# Run progress: 66.67% complete, ETA 00:00:08
+# Fork: 1 of 1
+# Warmup Iteration   1: 124.909 ns/op
+# Warmup Iteration   2: 118.511 ns/op
+# Warmup Iteration   3: 119.945 ns/op
+Iteration   1: 117.447 ns/op
+                 gc.alloc.rate:      2143.210 MB/sec
+                 gc.alloc.rate.norm: 264.001 B/op
+                 gc.count:           6.000 counts
+                 gc.time:            5.000 ms
+
+Iteration   2: 117.652 ns/op
+                 gc.alloc.rate:      2139.467 MB/sec
+                 gc.alloc.rate.norm: 264.001 B/op
+                 gc.count:           6.000 counts
+                 gc.time:            4.000 ms
+
+Iteration   3: 119.884 ns/op
+                 gc.alloc.rate:      2099.656 MB/sec
+                 gc.alloc.rate.norm: 264.001 B/op
+                 gc.count:           7.000 counts
+                 gc.time:            5.000 ms
+
+Iteration   4: 118.236 ns/op
+                 gc.alloc.rate:      2128.898 MB/sec
+                 gc.alloc.rate.norm: 264.001 B/op
+                 gc.count:           6.000 counts
+                 gc.time:            5.000 ms
+
+Iteration   5: 116.836 ns/op
+                 gc.alloc.rate:      2154.348 MB/sec
+                 gc.alloc.rate.norm: 264.001 B/op
+                 gc.count:           6.000 counts
+                 gc.time:            4.000 ms
+
+
+
+Result "bench.MessageBytesToBytesBenchmark.nonAsciiString":
+  118.011 ±(99.9%) 4.469 ns/op [Average]
+  (min, avg, max) = (116.836, 118.011, 119.884), stdev = 1.161
+  CI (99.9%): [113.542, 122.480] (assumes normal distribution)
+
+Secondary result "bench.MessageBytesToBytesBenchmark.nonAsciiString:gc.alloc.rate":
+  2133.116 ±(99.9%) 80.088 MB/sec [Average]
+  (min, avg, max) = (2099.656, 2133.116, 2154.348), stdev = 20.799
+  CI (99.9%): [2053.027, 2213.204] (assumes normal distribution)
+
+Secondary result "bench.MessageBytesToBytesBenchmark.nonAsciiString:gc.alloc.rate.norm":
+  264.001 ±(99.9%) 0.001 B/op [Average]
+  (min, avg, max) = (264.001, 264.001, 264.001), stdev = 0.001
+  CI (99.9%): [264.001, 264.001] (assumes normal distribution)
+
+Secondary result "bench.MessageBytesToBytesBenchmark.nonAsciiString:gc.count":
+  31.000 ±(99.9%) 0.001 counts [Sum]
+  (min, avg, max) = (6.000, 6.200, 7.000), stdev = 0.447
+  CI (99.9%): [31.000, 31.000] (assumes normal distribution)
+
+Secondary result "bench.MessageBytesToBytesBenchmark.nonAsciiString:gc.time":
+  23.000 ±(99.9%) 0.001 ms [Sum]
+  (min, avg, max) = (4.000, 4.600, 5.000), stdev = 0.548
+  CI (99.9%): [23.000, 23.000] (assumes normal distribution)
+
+
+# Run complete. Total time: 00:00:24
+
+REMEMBER: The numbers below are just data. To gain reusable insights, you need to follow up on
+why the numbers are the way they are. Use profilers (see -prof, -lprof), design factorial
+experiments, perform baseline and negative tests that provide experimental control, make sure
+the benchmarking environment is safe on JVM/OS/HW level, ask for reviews from the domain experts.
+Do not assume the numbers tell you what you want them to tell.
+
+NOTE: Current JVM experimentally supports Compiler Blackholes, and they are in use. Please exercise
+extra caution when trusting the results, look into the generated code to check the benchmark still
+works, and factor in a small probability of new VM bugs. Additionally, while comparisons between
+different JVMs are already problematic, the performance difference caused by different Blackhole
+modes can be very significant. Please make sure you use the consistent Blackhole mode for comparisons.
+
+Benchmark                                                       (charsetName)  Mode  Cnt     Score     Error   Units
+MessageBytesToBytesBenchmark.asciiChars                                 UTF-8  avgt    5   111.529 ±   9.694   ns/op
+MessageBytesToBytesBenchmark.asciiChars:gc.alloc.rate                   UTF-8  avgt    5  2394.655 ± 204.304  MB/sec
+MessageBytesToBytesBenchmark.asciiChars:gc.alloc.rate.norm              UTF-8  avgt    5   280.001 ±   0.001    B/op
+MessageBytesToBytesBenchmark.asciiChars:gc.count                        UTF-8  avgt    5    29.000            counts
+MessageBytesToBytesBenchmark.asciiChars:gc.time                         UTF-8  avgt    5    22.000                ms
+MessageBytesToBytesBenchmark.asciiString                                UTF-8  avgt    5   105.188 ±   6.840   ns/op
+MessageBytesToBytesBenchmark.asciiString:gc.alloc.rate                  UTF-8  avgt    5  2538.561 ± 163.348  MB/sec
+MessageBytesToBytesBenchmark.asciiString:gc.alloc.rate.norm             UTF-8  avgt    5   280.001 ±   0.001    B/op
+MessageBytesToBytesBenchmark.asciiString:gc.count                       UTF-8  avgt    5    36.000            counts
+MessageBytesToBytesBenchmark.asciiString:gc.time                        UTF-8  avgt    5    25.000                ms
+MessageBytesToBytesBenchmark.nonAsciiString                             UTF-8  avgt    5   118.011 ±   4.469   ns/op
+MessageBytesToBytesBenchmark.nonAsciiString:gc.alloc.rate               UTF-8  avgt    5  2133.116 ±  80.088  MB/sec
+MessageBytesToBytesBenchmark.nonAsciiString:gc.alloc.rate.norm          UTF-8  avgt    5   264.001 ±   0.001    B/op
+MessageBytesToBytesBenchmark.nonAsciiString:gc.count                    UTF-8  avgt    5    31.000            counts
+MessageBytesToBytesBenchmark.nonAsciiString:gc.time                     UTF-8  avgt    5    23.000                ms
