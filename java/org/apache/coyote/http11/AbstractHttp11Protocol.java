@@ -497,6 +497,26 @@ public abstract class AbstractHttp11Protocol<S> extends AbstractProtocol<S> {
 
 
     /**
+     * Get the level used for Zstd compression.
+     *
+     * @return The level from 1 (fastest) to 22 (smallest) or 0 if Zstd is not used
+     */
+    public int getCompressionZstdLevel() {
+        return compressionConfig.getCompressionZstdLevel();
+    }
+
+
+    /**
+     * Set the level used for Zstd compression.
+     *
+     * @param compressionZstdLevel The level from 1 (fastest) to 22 (smallest) or 0 to disable Zstd
+     */
+    public void setCompressionZstdLevel(int compressionZstdLevel) {
+        compressionConfig.setCompressionZstdLevel(compressionZstdLevel);
+    }
+
+
+    /**
      * Get the content encodings that should not be used.
      *
      * @return The content encodings that should not be used

@@ -470,6 +470,36 @@
       If you specify a type explicitly, the default is over-ridden.</p>
     </attribute>
 
+    <attribute name="compressionZstdLevel" required="false">
+      <p>Enables compression with Zstd, as an alternative to gzip, when
+      <code>compression</code> is enabled. The value is the compression level
+      used by the encoder, from <code>1</code> (fastest) to <code>22</code>
+      (smallest output). Levels above <code>9</code> use a lot of CPU and are
+      not suitable for responses that are generated for each request. The
+      default value is <code>0</code>, which disables Zstd so that only gzip is
+      used.</p>
+      <p>Zstd is used for a response if the client accepts it and it is
+      preferred to gzip, taking the <code>q</code> values of the
+      <code>Accept-Encoding</code> request header field into account. If they
+      are the same, Zstd is used if the client has listed it. Otherwise the
+      response is compressed with gzip, or is not compressed, exactly as it is
+      without Zstd. The same connector attributes apply to both encodings and
+      they are used for HTTP/1.1 and for HTTP/2. The encoder never requires a
+      decoder window larger than 256 KiB, which is well within the 8 MiB limit
+      of <a href="https://www.rfc-editor.org/rfc/rfc9659">RFC 9659</a>.</p>
+      <p>Tomcat does not include a Zstd encoder. This feature uses
+      <code>libzstd</code> of the operating system. It requires the optional
+      FFM support (<code>tomcat-coyote-ffm.jar</code>) and a JRE that supports
+      it, as for the OpenSSL support of the FFM API. If the library cannot be
+      used, a warning is logged and gzip is used. The memory used by the
+      encoder is not part of the Java heap. A response that is being compressed
+      uses up to about 2.5 MiB, at any level, and the memory is released when
+      the response is complete or abandoned. The total is bounded by the number
+      of responses that are being compressed at the same time.</p>
+      <p>As with gzip, compressing a response that contains both a secret and
+      content that is controlled by an attacker can leak the secret.</p>
+    </attribute>
+
     <attribute name="compression" required="false">
       <p>The <strong>Connector</strong> may use HTTP/1.1 GZIP compression in
       an attempt to save server bandwidth. The acceptable values for the

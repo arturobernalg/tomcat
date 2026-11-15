@@ -27,6 +27,7 @@ import java.util.Set;
 import java.util.StringTokenizer;
 import java.util.regex.Pattern;
 
+import org.apache.coyote.http11.filters.ZstdEncoder;
 import org.apache.juli.logging.Log;
 import org.apache.juli.logging.LogFactory;
 import org.apache.tomcat.util.buf.MessageBytes;
@@ -57,6 +58,10 @@ public class CompressionConfig {
             "text/javascript,application/javascript,application/json,application/xml";
     private String[] compressibleMimeTypes = null;
     private int compressionMinSize = 2048;
+    private int compressionZstdLevel = 0;
+
+    // The position of the note of the response that holds the Zstd level that was chosen for it
+    private static final int NOTE_ZSTD_LEVEL = 9;
     private Set<String> noCompressionEncodings =
             new HashSet<>(Arrays.asList("br", "compress", "dcb", "dcz", "deflate", "gzip", "pack200-gzip", "zstd"));
 
@@ -258,6 +263,72 @@ public class CompressionConfig {
 
 
     /**
+     * Returns the level used for Zstd compression.
+     *
+     * @return the level from 1 (fastest) to 22 (smallest) or 0 if Zstd is not used
+     */
+    public int getCompressionZstdLevel() {
+        return compressionZstdLevel;
+    }
+
+
+    /**
+     * Sets the level used for Zstd compression. Zstd is only used if it is enabled with a level of 1 or more,
+     * the client accepts it and the Zstd library is available. Otherwise gzip is used.
+     *
+     * @param compressionZstdLevel the level from 1 (fastest) to 22 (smallest) or 0 to disable Zstd
+     *
+     * @throws IllegalArgumentException if the level is not between 0 and 22
+     */
+    public void setCompressionZstdLevel(int compressionZstdLevel) {
+        if (compressionZstdLevel < 0 || compressionZstdLevel > 22) {
+            throw new IllegalArgumentException(sm.getString("compressionConfig.invalidZstdLevel",
+                    Integer.valueOf(compressionZstdLevel)));
+        }
+        if (compressionZstdLevel > 0 && !ZstdEncoder.isAvailable()) {
+            log.warn(sm.getString("compressionConfig.zstdUnavailable"));
+        }
+        this.compressionZstdLevel = compressionZstdLevel;
+    }
+
+
+    /**
+     * Returns the Zstd level that was chosen for a response, for which {@link #useCompression(Request, Response)}
+     * returned {@code true}. The level is read from the configuration once, when Zstd is chosen, so it is that
+     * which was used to choose Zstd even if the configuration has been changed since.
+     *
+     * @param response The response that is being compressed
+     *
+     * @return the level from 1 (fastest) to 22 (smallest) or 0 if the response is not compressed with Zstd
+     */
+    public static int getZstdLevel(Response response) {
+        if (isZstd(response) && response.getNote(NOTE_ZSTD_LEVEL) instanceof Integer level) {
+            return level.intValue();
+        }
+        return 0;
+    }
+
+
+    /**
+     * Determines if the compression selected for a response, for which {@link #useCompression(Request, Response)}
+     * returned {@code true}, is Zstd rather than gzip.
+     *
+     * @param response The response that is being compressed
+     *
+     * @return {@code true} if the response is compressed with Zstd
+     */
+    public static boolean isZstd(Response response) {
+        Enumeration<String> contentEncodings = response.getMimeHeaders().values("Content-Encoding");
+        while (contentEncodings.hasMoreElements()) {
+            if ("zstd".equalsIgnoreCase(contentEncodings.nextElement().trim())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+
+    /**
      * Determines if compression should be enabled for the given response and if it is, sets any necessary headers to
      * mark it as such.
      *
@@ -274,6 +345,8 @@ public class CompressionConfig {
 
         boolean useTransferEncoding = false;
         boolean useContentEncoding = true;
+        boolean useZstd = false;
+        int zstdLevel = 0;
 
         MimeHeaders responseHeaders = response.getMimeHeaders();
 
@@ -357,9 +430,21 @@ public class CompressionConfig {
             ResponseUtil.addVaryFieldName(responseHeaders, "accept-encoding");
 
             /*
-             * Check if user-agent supports gzip encoding. Only interested in whether gzip encoding is supported. Other
-             * encodings can be ignored.
+             * Check which of the encodings supported by this server, gzip and, if enabled, Zstd, the user-agent
+             * supports. Other encodings can be ignored.
              */
+            // The configuration can be changed at any time so it is read once. The level that is used is the one that
+            // was used to decide to use Zstd.
+            zstdLevel = compressionZstdLevel;
+            boolean zstdEnabled = zstdLevel > 0 && ZstdEncoder.isAvailable();
+            // The weight of an encoding that has not been listed is the weight of the wildcard, if there is one
+            double gzipWeight = 0;
+            double zstdWeight = 0;
+            double wildcardWeight = 0;
+            boolean gzipListed = false;
+            boolean zstdListed = false;
+            boolean gzipExcluded = false;
+            boolean zstdExcluded = false;
             headerValues = request.getMimeHeaders().values("accept-encoding");
             while (headerValues.hasMoreElements()) {
                 List<AcceptEncoding> acceptEncodings;
@@ -371,15 +456,41 @@ public class CompressionConfig {
                 }
 
                 for (AcceptEncoding acceptEncoding : acceptEncodings) {
-                    if (("gzip".equalsIgnoreCase(acceptEncoding.getEncoding()) ||
-                            "*".equals(acceptEncoding.getEncoding())) && acceptEncoding.getQuality() > 0) {
-                        foundGzip = true;
-                    }
-                    if ("gzip".equalsIgnoreCase(acceptEncoding.getEncoding()) && acceptEncoding.getQuality() == 0) {
+                    String encoding = acceptEncoding.getEncoding();
+                    double quality = acceptEncoding.getQuality();
+                    if ("gzip".equalsIgnoreCase(encoding)) {
+                        gzipListed = true;
+                        gzipWeight = Math.max(gzipWeight, quality);
                         // gzip is explicitly disabled
-                        return false;
+                        gzipExcluded |= quality == 0;
+                    } else if (zstdEnabled && "zstd".equalsIgnoreCase(encoding)) {
+                        zstdListed = true;
+                        zstdWeight = Math.max(zstdWeight, quality);
+                        zstdExcluded |= quality == 0;
+                    } else if ("*".equals(encoding)) {
+                        wildcardWeight = Math.max(wildcardWeight, quality);
                     }
                 }
+            }
+
+            if (gzipExcluded) {
+                gzipWeight = 0;
+            } else if (!gzipListed) {
+                gzipWeight = wildcardWeight;
+            }
+            if (zstdExcluded) {
+                zstdWeight = 0;
+            } else if (!zstdListed) {
+                zstdWeight = wildcardWeight;
+            }
+
+            foundGzip = gzipWeight > 0;
+            // Zstd is only used if it is the encoding that is preferred by the user-agent. If the weights are the
+            // same, it is used if the user-agent has asked for it, as it is expected to produce the smaller response.
+            useZstd = zstdEnabled && zstdWeight > 0 &&
+                    (zstdWeight > gzipWeight || zstdWeight == gzipWeight && zstdListed);
+            if (useZstd) {
+                foundGzip = true;
             }
         }
 
@@ -411,7 +522,10 @@ public class CompressionConfig {
             responseHeaders.addValue("Transfer-Encoding").setString("gzip");
         } else {
             // Configure the content encoding for compressed content
-            responseHeaders.addValue("Content-Encoding").setString("gzip");
+            responseHeaders.addValue("Content-Encoding").setString(useZstd ? "zstd" : "gzip");
+            if (useZstd) {
+                response.setNote(NOTE_ZSTD_LEVEL, Integer.valueOf(zstdLevel));
+            }
         }
 
         return true;
